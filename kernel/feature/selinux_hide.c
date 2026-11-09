@@ -1072,6 +1072,31 @@ out:
 }
 
 /*
+ * Domains that exist in the stock policy but act as a root tell when an
+ * app can resolve them. "adbroot" is the adb_root daemon's domain: on
+ * user builds the ROM often declares it in system_ext policy while
+ * /system_ext/bin/adb_root is not shipped, so nothing ever runs in it.
+ * Detectors probe u:r:adbroot:s0 through attr/current and
+ * /sys/fs/selinux/{context,access}. For hidden callers these resolve
+ * like an absent type (-EINVAL). Matching is on the exact type name, so
+ * adbroot_exec, adbroot_data_file and adbroot_service keep resolving.
+ */
+static const char *const ksu_hidden_types[] = {
+    "adbroot",
+};
+
+static bool ksu_is_hidden_type(const char *name)
+{
+    size_t i;
+
+    for (i = 0; i < ARRAY_SIZE(ksu_hidden_types); i++) {
+        if (!strcmp(name, ksu_hidden_types[i]))
+            return true;
+    }
+    return false;
+}
+
+/*
  * Caveat:  Mutates scontext.
  *
  * Both policies are looked up field by field in the same pass, so a
@@ -1147,7 +1172,7 @@ static int string_to_context_struct(struct policydb *pol, struct policydb *orig_
 
     typdatum = symtab_search(&pol->p_types, scontextp);
     orig_typdatum = symtab_search(&orig_pol->p_types, scontextp);
-    if (!typdatum || typdatum->attribute)
+    if (!typdatum || typdatum->attribute || ksu_is_hidden_type(scontextp))
         goto out;
 
     ctx->type = typdatum->value;
